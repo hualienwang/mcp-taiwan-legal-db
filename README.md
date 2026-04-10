@@ -1,32 +1,40 @@
 # mcp-taiwan-legal-db
 
-A Model Context Protocol (MCP) server that gives any MCP-compatible AI assistant direct access to Taiwan (ROC) legal databases:
+[English](README.en.md) · **繁體中文**
 
-- **Judicial Yuan judgments** — judgment.judicial.gov.tw (full-text search + get)
-- **National regulation database** — law.moj.gov.tw (11,700+ laws and ordinances)
+一個 Model Context Protocol (MCP) 伺服器，讓任何 MCP 相容的 AI 助手可以直接存取台灣公開法律資料：
 
-Written in Python with [FastMCP](https://github.com/modelcontextprotocol/python-sdk). Pure tool wrapper — no opinions, no business logic, no telemetry, no network calls outside the two official Taiwan government sources above.
+- **司法院裁判書** — judgment.judicial.gov.tw（全文搜尋 + 取得）
+- **全國法規資料庫** — law.moj.gov.tw（11,700+ 部法規）
+
+以 Python 搭配 [FastMCP](https://github.com/modelcontextprotocol/python-sdk) 寫成。純工具 wrapper 除了上述兩個台灣官方來源之外不會發送任何網路請求。
 
 ---
 
-## ⚡ Quick Start for AI Coding Agents
+## 為什麼開源這個
 
-If you're an AI agent (Claude Code / Sonnet / etc.) tasked with installing and using this MCP server, run these commands **in order**. They are copy-paste runnable on Linux / macOS / WSL with Python 3.10+.
+台灣法律公開資料本來就是免費的，開源出來讓大家不用再重新寫一次同樣的東西。
+
+---
+
+## ⚡ 快速上手
+
+照順序執行下列指令。Linux / macOS / WSL + Python 3.10+ 可直接複製貼上。
 
 ```bash
-# 1. Clone the repo
-git clone <repo-url> mcp-taiwan-legal-db
+# 1. Clone repo
+git clone https://github.com/lawchat-oss/mcp-taiwan-legal-db.git
 cd mcp-taiwan-legal-db
 
-# 2. Create and populate the virtual environment
+# 2. 建立並初始化虛擬環境
 python3 -m venv .venv
 .venv/bin/pip install --upgrade pip
 .venv/bin/pip install -e .
 
-# 3. Install Playwright browser (required by search_judgments keyword fallback)
+# 3. 安裝 Playwright 瀏覽器（判決全文搜尋 + HTTP fallback 需要）
 .venv/bin/playwright install chromium
 
-# 4. Verify the server starts and registers all 5 tools
+# 4. 驗證伺服器可以啟動並註冊 5 個工具
 .venv/bin/python -c "
 import asyncio
 from mcp_server.server import mcp
@@ -38,51 +46,51 @@ print('✓ Setup OK')
 "
 ```
 
-**Expected output of step 4:**
+**步驟 4 的預期輸出：**
 ```
 Server: 台灣法律資料庫
 Tools: ['search_judgments', 'get_judgment', 'query_regulation', 'get_pcode', 'search_regulations']
 ✓ Setup OK
 ```
 
-If that prints without errors, you're done. The repo ships a `.mcp.json` at the root, so **any Claude Code session opened inside this folder will automatically load the server**. No extra registration needed.
+上面沒報錯就完成了。Repo 根目錄已經帶一份 `.mcp.json`，**任何在此資料夾內開的 Claude Code session 會自動載入這個 server**，不需要額外註冊。
 
 ---
 
-## What you get
+## 有什麼工具可以用
 
-Five MCP tools, all read-only, all hitting only public Taiwan government databases:
+五個 MCP 工具，全部唯讀，全部只打台灣政府的公開資料庫：
 
-| Tool | Purpose | Typical call |
+| 工具 | 用途 | 典型呼叫 |
 |---|---|---|
-| `search_judgments` | Search Judicial Yuan judgment database | `search_judgments(case_word="台上", case_number="3753", year_from=114, court="最高法院")` |
-| `get_judgment` | Fetch full text of a single judgment by JID or URL | `get_judgment(jid="TPSM,114,台上,3753,20251112,1")` |
-| `query_regulation` | Query a regulation article / range / full text / amendment history | `query_regulation(law_name="民法", article_no="184")` |
-| `get_pcode` | Resolve regulation name → pcode (law code) | `get_pcode(law_name="律師法")` → `"I0020006"` |
-| `search_regulations` | Keyword search across 11,700+ regulations | `search_regulations(keyword="勞動")` |
+| `search_judgments` | 搜尋司法院裁判書資料庫 | `search_judgments(case_word="台上", case_number="3753", year_from=114, court="最高法院")` |
+| `get_judgment` | 依 JID 或 URL 取得單筆判決全文 | `get_judgment(jid="TPSM,114,台上,3753,20251112,1")` |
+| `query_regulation` | 查詢法規條文／範圍／全文／修法沿革 | `query_regulation(law_name="民法", article_no="184")` |
+| `get_pcode` | 將法規名稱解析為 pcode（法規代號） | `get_pcode(law_name="律師法")` → `"I0020006"` |
+| `search_regulations` | 以關鍵字搜尋 11,700+ 部法規 | `search_regulations(keyword="勞動")` |
 
-### Tool details
+### 工具細節
 
 <details>
 <summary><b><code>search_judgments</code></b></summary>
 
-Searches the Judicial Yuan judgment system. Supports:
+搜尋司法院判決系統。支援：
 
-- **Precise case number lookup** (fast, HTTP GET): set `case_word` + `case_number` + `year_from`
-- **Full-text keyword search** (Playwright fallback): set `keyword`
-- Filter by `court`, `case_type` (民事/刑事/行政/懲戒), `year_from`/`year_to`
-- Returns results auto-sorted by court authority (最高 → 高等 → 地方)
+- **精確案號查詢**（快，HTTP GET）：設定 `case_word` + `case_number` + `year_from`
+- **全文關鍵字搜尋**（Playwright fallback）：設定 `keyword`
+- 可依 `court`、`case_type`（民事／刑事／行政／懲戒）、`year_from`／`year_to` 過濾
+- 結果自動依法院層級排序（最高 → 高等 → 地方）
 
-**Important**: when looking up a specific case by its number, **always** use `case_word`+`case_number`, not `keyword`. Putting a case number in `keyword` will not find it.
+**重要**：要查某個特定案號時，**一定**要用 `case_word`+`case_number`，不要放進 `keyword`。把案號塞進 `keyword` 找不到。
 
 ```python
-# ✅ Correct — find 114 台上 3753 Supreme Court
+# ✅ 正確 — 查 114 台上 3753 最高法院
 search_judgments(case_word="台上", case_number="3753", year_from=114, court="最高法院")
 
-# ✅ Correct — full-text search
+# ✅ 正確 — 全文搜尋
 search_judgments(keyword="預售屋 遲延交屋")
 
-# ❌ Wrong — putting case number in keyword
+# ❌ 錯 — 把案號放進 keyword
 search_judgments(keyword="114年度台上字第3753號")
 ```
 </details>
@@ -90,79 +98,79 @@ search_judgments(keyword="114年度台上字第3753號")
 <details>
 <summary><b><code>get_judgment</code></b></summary>
 
-Fetches a single judgment's full structured text.
+取得單筆判決的結構化全文。
 
-- Input: `jid` (from `search_judgments` results) OR `url`
-- Output: `{case_id, court, date, main_text, facts, reasoning, cited_statutes, cited_cases, full_text, source_url}`
-- Uses HTTP GET primarily, falls back to Playwright if needed
-- Caches results for 30 days
+- 輸入：`jid`（從 `search_judgments` 結果取得）或 `url`
+- 輸出：`{case_id, court, date, main_text, facts, reasoning, cited_statutes, cited_cases, full_text, source_url}`
+- 主要走 HTTP GET，失敗時 fallback 到 Playwright
+- 結果快取 30 天
 
 ```python
 get_judgment(jid="TPSM,114,台上,3753,20251112,1")
 ```
 
-Single judgments can be 10K+ tokens. Prefer `search_judgments` metadata first, only fetch full text when the user explicitly needs it.
+單筆判決可能超過 1 萬 token。建議先用 `search_judgments` 取得 metadata，只在使用者明確需要時才抓全文。
 </details>
 
 <details>
 <summary><b><code>query_regulation</code></b></summary>
 
-Queries the national regulation database.
+查詢全國法規資料庫。
 
 ```python
-# Single article
+# 單一條文
 query_regulation(law_name="民法", article_no="184")
 
-# Range
+# 條文範圍
 query_regulation(law_name="民法", from_no="184", to_no="198")
 
-# Full law
+# 完整法規
 query_regulation(law_name="律師法")
 
-# With amendment history
+# 附修法沿革
 query_regulation(law_name="勞動基準法", article_no="23", include_history=True)
 ```
 
-Supports both `law_name` (automatic pcode resolution via `get_pcode`) and direct `pcode`. Sub-articles like `247-1`, `15-1` work.
+支援 `law_name`（透過 `get_pcode` 自動解析 pcode）或直接傳 `pcode`。子條文如 `247-1`、`15-1` 都支援。
 </details>
 
 <details>
 <summary><b><code>get_pcode</code></b></summary>
 
-Converts a regulation name to its pcode (the law.moj.gov.tw internal ID).
+將法規名稱轉換為 pcode（law.moj.gov.tw 內部 ID）。
 
 ```python
 get_pcode(law_name="律師法")
 # → {"success": true, "law_name": "律師法", "pcode": "I0020006", "status": "現行法規"}
 
 get_pcode(law_name="勞基法")
-# → fuzzy match to "勞動基準法" → {"success": true, "pcode": "N0030001", ...}
+# → 模糊比對到 "勞動基準法" → {"success": true, "pcode": "N0030001", ...}
 ```
 
-Covers 11,700+ laws and ordinances. Bundled `pcode_all.json` is auto-refreshed weekly from the official API.
+涵蓋 11,700+ 部法規。內建的 `pcode_all.json` 會從官方 API 每週自動更新。
 </details>
 
 <details>
 <summary><b><code>search_regulations</code></b></summary>
 
-Keyword search across regulation names. Paginated (50 per page), current regulations sorted before abolished ones.
+對法規名稱做關鍵字搜尋。分頁（每頁 50 筆），現行法規排在廢止之前。
 
 ```python
 search_regulations(keyword="勞動")
-search_regulations(keyword="勞動", offset=50)  # page 2
+search_regulations(keyword="勞動", offset=50)  # 第 2 頁
 search_regulations(keyword="消費", exclude_abolished=True)
 ```
 </details>
 
 ---
 
-## Registering with your Claude client
+## 註冊到你的 Claude client
 
-Pick the section that matches the Claude client you use.
+依你使用的 Claude client 選對應的段落。
 
 ### Claude Code (CLI)
 
-Claude Code auto-loads `.mcp.json` files at the project root. This repo already ships one:
+Claude Code 會自動載入專案根目錄的 `.mcp.json`。這個 repo 已經內建一份：
 
 ```json
 {
@@ -175,11 +183,11 @@ Claude Code auto-loads `.mcp.json` files at the project root. This repo already 
 }
 ```
 
-**Zero config**: `cd` into the repo and run `claude`. You'll see `taiwan-legal-db` in the MCP server list and nothing else in this folder.
+**零設定**：`cd` 進 repo 之後跑 `claude` 就好。MCP server 列表會看到 `taiwan-legal-db`，而且此資料夾不會有其他多餘的 server。
 
-**Share with teammates**: the `.mcp.json` is committed to the repo. Anyone who clones and completes the Quick Start gets the same MCP registration automatically.
+**跟隊友分享**：`.mcp.json` 已經 commit 進 repo。任何人 clone 下來跟著 Quick Start 跑完，就會自動完成 MCP 註冊。
 
-**Add to another project** (e.g. you want this MCP available in some other folder): use `claude mcp add` with project scope:
+**加到其他專案**（你想在另一個資料夾用這個 MCP）：用 `claude mcp add` 以 project scope 加入：
 
 ```bash
 cd /path/to/your/other/project
@@ -188,19 +196,19 @@ claude mcp add taiwan-legal-db --scope project -- \
   -m mcp_server.server
 ```
 
-This writes a `.mcp.json` in your other project's root. Change `--scope project` to `--scope user` if you want it in every project you open.
+這會在你另一個專案的根目錄寫出一份 `.mcp.json`。想在每個專案都能用，把 `--scope project` 改成 `--scope user`。
 
 ### Claude Desktop (macOS / Windows)
 
-Claude Desktop uses a single global config file at:
+Claude Desktop 使用一個全域設定檔：
 
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-- **Windows (Microsoft Store / WinGet / MSIX installs)**: `C:\Users\<YourName>\AppData\Local\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\claude_desktop_config.json`
+- **macOS**：`~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**：`%APPDATA%\Claude\claude_desktop_config.json`
+- **Windows (Microsoft Store / WinGet / MSIX 安裝)**：`C:\Users\<YourName>\AppData\Local\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\claude_desktop_config.json`
 
-**Easiest way to open it**: in Claude Desktop, click the menu bar (not the window) → **Settings** → **Developer** → **Edit Config**. If the file doesn't exist yet, Claude Desktop creates it.
+**最快開啟方式**：在 Claude Desktop 點選單列（不是視窗）→ **Settings** → **Developer** → **Edit Config**。檔案若不存在 Claude Desktop 會自動建立。
 
-Add this under `mcpServers` (merge with anything already there):
+在 `mcpServers` 下加入以下內容（跟已有內容合併）：
 
 ```json
 {
@@ -214,130 +222,143 @@ Add this under `mcpServers` (merge with anything already there):
 }
 ```
 
-Replace `/absolute/path/to/mcp-taiwan-legal-db` with your actual clone path. The `cwd` field is required so Python finds the `mcp_server` package.
+把 `/absolute/path/to/mcp-taiwan-legal-db` 換成你的實際 clone 路徑。`cwd` 欄位必填，Python 才找得到 `mcp_server` 套件。
 
-**After saving, fully quit and reopen Claude Desktop** (not just close the window — on macOS use ⌘Q, on Windows right-click the tray icon → Quit). The config is only re-read on restart.
+**存檔後，完全關閉並重新開啟 Claude Desktop**（不是只關視窗 — macOS 用 ⌘Q、Windows 右鍵工具列圖示 → Quit）。設定檔只會在重啟時重新載入。
 
-### Claude Cowork (Max subscription)
+### Claude Cowork (Pro 以上方案)
 
-Claude Cowork runs inside Claude Desktop and **shares the same `claude_desktop_config.json`** — there is no separate Cowork config. Any MCP server you register for Claude Desktop is automatically bridged into Cowork's sandboxed VM by the Claude Desktop SDK layer.
+Claude Cowork 跑在 Claude Desktop 裡面，**共用同一個 `claude_desktop_config.json`** — 沒有另外的 Cowork 設定檔。任何你在 Claude Desktop 註冊的 MCP server 會自動透過 Claude Desktop SDK 橋接進 Cowork 的沙盒 VM。
 
-**Setup**:
+**設定步驟**：
 
-1. Follow the **Claude Desktop** section above to add `taiwan-legal-db` to `claude_desktop_config.json`
-2. **Fully quit and reopen Claude Desktop** — this also restarts Cowork
-3. Open a Cowork session. The `taiwan-legal-db` tools will be available to the Cowork agent
+1. 照上面 **Claude Desktop** 段落把 `taiwan-legal-db` 加進 `claude_desktop_config.json`
+2. **完全關閉並重新開啟 Claude Desktop** — 同時也會重啟 Cowork
+3. 開一個 Cowork session，`taiwan-legal-db` 的工具就可以用了
 
-**Note**: Cowork requires a Claude Max subscription and only accesses folders you explicitly grant permission to. The MCP server itself runs on your host (not inside the Cowork VM) and communicates via the Desktop SDK bridge, so it has access to the bundled `pcode_all.json` data file regardless of which folder you grant Cowork.
+**注意**：Cowork 目前在 Claude Pro / Max / Team / Enterprise 方案都可以用，且只能存取你明確授權的資料夾。MCP server 本身跑在你的 host 上（不是 Cowork VM 裡面），透過 Desktop SDK bridge 溝通，所以不管你授權哪個資料夾給 Cowork，它都存取得到內建的 `pcode_all.json` 資料檔。
 
-### Other MCP-compatible clients
+### 其他 MCP 相容 client
 
-Any MCP client that follows the [Model Context Protocol specification](https://modelcontextprotocol.io/) can use this server. The launch command is always the same:
+任何符合 [Model Context Protocol 規範](https://modelcontextprotocol.io/) 的 MCP client 都可以使用這個 server。啟動指令永遠是：
 
 ```
 .venv/bin/python -m mcp_server.server
 ```
 
-...with `cwd` set to the repo root (so Python can find the `mcp_server` package). Consult your client's documentation for where to add the `mcpServers` JSON block.
+⋯⋯加上 `cwd` 設定為 repo 根目錄（Python 才找得到 `mcp_server` 套件）。設定位置請參考你使用的 client 的文件，找 `mcpServers` JSON 區塊寫在哪裡。
 
 ---
 
-## Troubleshooting
+## 疑難排解
 
 **`ModuleNotFoundError: No module named 'mcp_server'`**
-→ You did not run `pip install -e .` inside the venv. Go back to Quick Start step 2.
+→ 你沒有在 venv 裡面跑 `pip install -e .`。回到 Quick Start 步驟 2。
 
 **`playwright._impl._errors.Error: Executable doesn't exist`**
-→ You skipped Quick Start step 3. Run `.venv/bin/playwright install chromium`. Only `search_judgments` with `keyword` (full-text) needs this; case-number lookups use pure HTTP and work without Playwright.
+→ 你跳過了 Quick Start 步驟 3。執行 `.venv/bin/playwright install chromium`。只有 `search_judgments` 用 `keyword`（全文）時需要這個；案號查詢是純 HTTP，不用 Playwright 也能跑。
 
 **`FileNotFoundError: data/pcode_all.json`**
-→ The bundled `mcp_server/data/pcode_all.json` is missing or got deleted. Restore from `git checkout mcp_server/data/pcode_all.json`, or trigger a refresh:
+→ 內建的 `mcp_server/data/pcode_all.json` 不見或被刪了。用 `git checkout mcp_server/data/pcode_all.json` 還原，或觸發重新下載：
 ```bash
 .venv/bin/python -m mcp_server.updater
 ```
 
-**MCP client reports "server failed to start"**
-→ Run the verify command from Quick Start step 4 directly. If it fails, the import chain is broken — read the traceback. If it passes, the issue is in the MCP client's launch configuration (wrong path, wrong cwd).
+**MCP client 回報「伺服器啟動失敗」**
+→ 直接跑 Quick Start 步驟 4 的驗證指令。若失敗，代表 import chain 壞了 — 看 traceback。若通過，問題在 MCP client 的啟動設定（路徑或 cwd 錯了）。
 
-**Slow first query**
-→ On startup the server lazy-starts Playwright in the background (~12s). First `search_judgments` keyword call may block briefly if warmup hasn't finished. Subsequent calls are fast.
+**第一次查詢很慢**
+→ 啟動時伺服器會在背景延遲啟動 Playwright（~12 秒）。第一次 `search_judgments` 關鍵字查詢若 warmup 還沒完成可能會卡一下。後續查詢會很快。
 
 ---
 
-## Data sources
+## 資料來源
 
-All data is fetched from **public** Taiwan government databases. No other network calls are made:
+所有資料都取自台灣政府**公開**資料庫。不會對外做其他網路呼叫：
 
-- `judgment.judicial.gov.tw` — Judicial Yuan judgment database
-- `data.judicial.gov.tw` — Judicial Yuan open data API
-- `law.moj.gov.tw` — Ministry of Justice national regulation database
+- `judgment.judicial.gov.tw` — 司法院裁判書系統
+- `data.judicial.gov.tw` — 司法院開放資料 API
+- `law.moj.gov.tw` — 法務部全國法規資料庫
 
-`mcp_server/config.py:ALLOWED_DOMAINS` enforces this as a hard allow-list. The server refuses to fetch any URL outside these domains.
+`mcp_server/config.py:ALLOWED_DOMAINS` 以硬編碼 allow-list 強制執行。伺服器會拒絕抓取任何不在這些網域的 URL。
 
-## Caching
+## 快取
 
-| Data type | TTL | Location |
+| 資料類型 | TTL | 位置 |
 |---|---|---|
-| Judgment full text | 30 days | `mcp_server/data/cache/legal_mcp.db` (SQLite, created on first run) |
-| Search results | 24 hours | same |
-| Regulation articles | 7 days | same |
-| pcode metadata | 30 days | same |
+| 判決全文 | 30 天 | `mcp_server/data/cache/legal_mcp.db`（SQLite，首次啟動時建立） |
+| 搜尋結果 | 24 小時 | 同上 |
+| 法規條文 | 7 天 | 同上 |
+| pcode metadata | 30 天 | 同上 |
 
-Flush everything: delete `mcp_server/data/cache/legal_mcp.db`. The cache file is in `.gitignore`.
+全部清除：刪掉 `mcp_server/data/cache/legal_mcp.db`。快取檔在 `.gitignore` 內。
 
-## pcode_all.json auto-update
+## pcode_all.json 自動更新
 
-On startup, the server checks the age of `mcp_server/data/pcode_all.json`. If the last update was before the most recent Saturday, it triggers a background refresh from `law.moj.gov.tw` official API. Failures are logged as warnings and do not block startup.
+伺服器啟動時會檢查 `mcp_server/data/pcode_all.json` 的時間戳。如果最後一次更新在最近的週六之前，會在背景觸發從 `law.moj.gov.tw` 官方 API 重新抓取。失敗會記為 warning，不會阻擋啟動。
 
-Manual refresh:
+手動更新：
 ```bash
 .venv/bin/python -m mcp_server.updater
 ```
 
 ---
 
-## Project layout
+## 專案結構
 
 ```
 mcp-taiwan-legal-db/
 ├── .gitignore
-├── .mcp.json              # Auto-registration for in-folder Claude Code sessions
+├── .mcp.json              # 資料夾內 Claude Code session 自動註冊用
 ├── LICENSE                # MIT
-├── README.md              # This file
-├── pyproject.toml         # Package metadata and deps
+├── README.md              # 本檔（繁體中文）
+├── README.en.md           # English version
+├── pyproject.toml         # 套件 metadata 與相依
 └── mcp_server/
     ├── __init__.py
-    ├── server.py          # FastMCP entry — defines the 5 @mcp.tool() functions
-    ├── config.py          # URLs, court codes, cache TTLs, allowed domains
-    ├── updater.py         # Standalone pcode_all.json refresh script
-    ├── cache/db.py        # SQLite cache layer
+    ├── server.py          # FastMCP 入口 — 定義 5 個 @mcp.tool() function
+    ├── config.py          # URL、法院代碼、快取 TTL、allowed domains
+    ├── updater.py         # 獨立的 pcode_all.json 更新 script
+    ├── cache/db.py        # SQLite 快取層
     ├── data/
-    │   ├── pcode_all.json          # 11,700+ regulations (bundled, ~780 KB)
-    │   └── law_histories.json      # Amendment history (bundled, ~9.6 MB)
-    ├── models/            # Judgment / Regulation dataclasses
-    ├── parsers/           # HTML parsers for judgment and regulation pages
+    │   ├── pcode_all.json          # 11,700+ 部法規（內建，~780 KB）
+    │   └── law_histories.json      # 修法沿革（內建，~9.6 MB）
+    ├── models/            # Judgment / Regulation dataclass
+    ├── parsers/           # 判決與法規頁面的 HTML parser
     ├── tools/
     │   ├── judicial_search.py      # search_judgments
     │   ├── judicial_doc.py         # get_judgment
     │   └── regulations.py          # query_regulation, get_pcode, search_regulations
-    └── tests/             # pytest suite
+    └── tests/             # pytest 測試
 ```
 
-## Running the test suite
+## 執行測試
 
 ```bash
 .venv/bin/pip install -e ".[dev]"
 .venv/bin/pytest mcp_server/tests/ -v
 ```
 
+---
+
+## 關於
+
+由 [LawChat](https://lawchat.com.tw) 維護 — 一個台灣法律 AI 平台。
+
+- 官網：[lawchat.com.tw](https://lawchat.com.tw)
+- 聯絡：opensource@lawchat.com.tw
+- 回報問題：[GitHub Issues](https://github.com/lawchat-oss/mcp-taiwan-legal-db/issues)
+
+Best-effort 維護 — 我們會盡量跟上 upstream（司法院、法務部）頁面變動，但不保證 issue 的回覆時效。
+
 ## License
 
 [MIT](LICENSE)
 
-## Disclaimer
+## 免責聲明
 
 This is an **unofficial** tool for querying publicly-available Taiwan legal databases. It is not affiliated with, endorsed by, or authorized by the Judicial Yuan, the Ministry of Justice, or any Taiwan government agency.
 
 The data returned by this tool reflects the state of the upstream official sources at the time of query. It may be cached (see TTLs above), and **must not be treated as legal advice or a substitute for the authoritative official sources**. Always verify against the original sources before relying on the data for any legal or official purpose.
 
-本工具為非官方的台灣公開法規資料查詢工具，與司法院、法務部或任何台灣政府機關無隸屬關係。查詢結果以上游官方資料庫當下狀態為準，不得作為法律意見或正式用途依據，使用前請向官方資料庫驗證。
+本工具為**非官方**的台灣公開法規資料查詢工具，與司法院、法務部或任何台灣政府機關無隸屬關係。查詢結果以上游官方資料庫當下狀態為準（且可能被快取 — 見上方 TTL 表），**不得作為法律意見或正式用途依據**，使用前請向官方資料庫驗證。
