@@ -10,6 +10,11 @@ from mcp_server.cache.db import CacheDB
 from mcp_server.tools.regulations import RegulationClient
 from mcp_server.tools.judicial_search import JudicialSearchClient
 from mcp_server.tools.judicial_doc import JudgmentDocClient
+from mcp_server.tools.constitutional_court import (
+    get_interpretation as _cc_get_interpretation,
+    search_interpretations as _cc_search_interpretations,
+    get_citations as _cc_get_citations,
+)
 from mcp_server.tools.regulations import (
     _PCODE_ALL, _PCODE_REVERSE, _ABOLISHED_SET,
     reload_pcode_all,
@@ -78,7 +83,10 @@ async def lifespan(server: FastMCP):
 # 建立 FastMCP 伺服器
 mcp = FastMCP(
     name="台灣法律資料庫",
-    instructions="查詢司法院裁判書、全國法規資料庫的 MCP 工具",
+    instructions=(
+        "查詢司法院裁判書、全國法規資料庫、大法官解釋（釋字）與憲法法庭裁判（憲判字）的 MCP 工具。"
+        "釋字/憲判字預設層與理由書從本地快取即時回傳，無需連網。"
+    ),
     lifespan=lifespan,
 )
 
@@ -358,6 +366,92 @@ async def search_regulations(keyword: str, offset: int = 0, exclude_abolished: b
         "has_more": offset + page_size < len(matches),
         "results": page,
     }
+
+
+# ============================================================
+# 工具 6：大法官解釋 / 憲法法庭裁判
+# ============================================================
+
+@mcp.tool()
+def get_interpretation(
+    case_id: str,
+    include_reasoning: bool = False,
+    reasoning_keyword: str = "",
+    include_opinions: bool = False,
+    opinions_keyword: str = "",
+) -> dict:
+    """取得司法院大法官解釋（釋字第 1-813 號）或憲法法庭裁判（憲判字）全文。
+
+    預設層（字號/日期/爭點/解釋文）從本地快取即時回傳，無需連網。
+    理由書/意見書支援全文模式與關鍵字片段模式。
+
+    case_id 格式（自動解析）：「釋字第748號」「釋字748」「748」
+    「111年憲判字第1號」「111憲判1」
+
+    Args:
+        case_id: 解釋/裁判字號字串
+        include_reasoning: 回傳理由書全文（最多 15000 字）
+        reasoning_keyword: 在理由書中搜尋關鍵字並回片段（覆蓋 include_reasoning）
+        include_opinions: 回傳意見書全文
+        opinions_keyword: 在意見書中搜尋關鍵字並回片段
+    """
+    return _cc_get_interpretation(
+        case_id, include_reasoning, reasoning_keyword,
+        include_opinions, opinions_keyword,
+    )
+
+
+# ============================================================
+# 工具 7：搜尋大法官解釋 / 憲判字
+# ============================================================
+
+@mcp.tool()
+def search_interpretations(
+    keyword: str = "",
+    year: int = 0,
+    number_from: int = 0,
+    number_to: int = 0,
+    include_old: bool = True,
+    include_new: bool = True,
+    max_results: int = 30,
+) -> dict:
+    """列舉大法官解釋 / 憲法法庭裁判。支援關鍵字全文搜尋（搜爭點 + 理由書）。
+
+    每筆結果帶 case_id，可直接傳給 get_interpretation()。
+
+    Args:
+        keyword: 關鍵字（標題/字號/爭點/理由書全文匹配）
+        year: 篩選民國年度（0=不篩選，>0 只回新制憲判字）
+        number_from: 起始號次（含），0=不篩選
+        number_to: 截止號次（含），0=不篩選
+        include_old: 包含舊制釋字（year=0 時才生效）
+        include_new: 包含新制憲判字
+        max_results: 回傳筆數上限（預設 30）
+    """
+    return _cc_search_interpretations(
+        keyword, year, number_from, number_to,
+        include_old, include_new, max_results,
+    )
+
+
+# ============================================================
+# 工具 8：大法官解釋引用關係
+# ============================================================
+
+@mcp.tool()
+def get_citations(
+    case_id: str,
+    include_context: bool = False,
+) -> dict:
+    """從大法官解釋/憲判字的理由書中抽取所有引用的其他釋字/憲判字字號。
+
+    追溯方向：查詢指定裁判引用了哪些先前裁判（往前追溯）。
+
+    Args:
+        case_id: 解釋/裁判字號字串（格式同 get_interpretation）
+        include_context: 每個引用附上原文前後 80 字片段
+    """
+    return _cc_get_citations(case_id, include_context)
 
 
 # ============================================================

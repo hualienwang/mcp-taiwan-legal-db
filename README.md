@@ -2,18 +2,27 @@
 
 [English](README.en.md) · **繁體中文**
 
-一個 Model Context Protocol (MCP) 伺服器，讓任何 MCP 相容的 AI 助手可以直接存取台灣公開法律資料：
+台灣法規、裁判書、憲法法庭裁判 — MCP Server。
+
+讓任何 MCP 相容的 AI 助手直接存取台灣公開法律資料：
 
 - **司法院裁判書** — judgment.judicial.gov.tw（全文搜尋 + 取得）
 - **全國法規資料庫** — law.moj.gov.tw（11,700+ 部法規）
+- **憲法法庭** — cons.judicial.gov.tw（868 筆大法官解釋 + 憲判字，含理由書全文，離線快取）
 
-以 Python 搭配 [FastMCP](https://github.com/modelcontextprotocol/python-sdk) 寫成。純工具 wrapper 除了上述兩個台灣官方來源之外不會發送任何網路請求。
+以 Python 搭配 [FastMCP](https://github.com/modelcontextprotocol/python-sdk) 寫成。純工具 wrapper 只打上述三個台灣官方來源，不會發送任何其他網路請求。
 
 ---
 
-## 為什麼開源這個
+## 特色
 
-台灣法律公開資料本來就是免費的，開源出來讓大家不用再重新寫一次同樣的東西。
+| 功能 | 說明 |
+|------|------|
+| **8 個 MCP 工具** | 裁判書搜尋/全文、法規查詢、釋字/憲判字查詢、引用關係圖譜 |
+| **離線快取** | 868 筆大法官解釋與憲判字（含理由書/意見書全文）從本地 JSON 即時回傳 |
+| **引用關係圖譜** | 從理由書抽取所有引用的釋字/憲判字，追溯憲法學說演變 |
+| **全文搜尋** | 裁判書關鍵字搜尋 + 釋字爭點/理由書全文搜尋 |
+| **純 HTTP** | 不需要 Playwright / Chromium，安裝輕量 |
 
 ---
 
@@ -31,22 +40,22 @@ python3 -m venv .venv
 .venv/bin/pip install --upgrade pip
 .venv/bin/pip install -e .
 
-# 3. 驗證伺服器可以啟動並註冊 5 個工具
+# 3. 驗證伺服器可以啟動並註冊 8 個工具
 .venv/bin/python -c "
 import asyncio
 from mcp_server.server import mcp
 print('Server:', mcp.name)
 tools = asyncio.run(mcp.list_tools())
 print('Tools:', [t.name for t in tools])
-assert len(tools) == 5, f'Expected 5 tools, got {len(tools)}'
+assert len(tools) == 8, f'Expected 8 tools, got {len(tools)}'
 print('✓ Setup OK')
 "
 ```
 
-**步驟 4 的預期輸出：**
+**預期輸出：**
 ```
 Server: 台灣法律資料庫
-Tools: ['search_judgments', 'get_judgment', 'query_regulation', 'get_pcode', 'search_regulations']
+Tools: ['search_judgments', 'get_judgment', 'query_regulation', 'get_pcode', 'search_regulations', 'get_interpretation', 'search_interpretations', 'get_citations']
 ✓ Setup OK
 ```
 
@@ -56,15 +65,25 @@ Tools: ['search_judgments', 'get_judgment', 'query_regulation', 'get_pcode', 'se
 
 ## 有什麼工具可以用
 
-五個 MCP 工具，全部唯讀，全部只打台灣政府的公開資料庫：
+8 個 MCP 工具，全部唯讀，全部只打台灣政府的公開資料庫。
+
+### 法規與裁判
 
 | 工具 | 用途 | 典型呼叫 |
 |---|---|---|
-| `search_judgments` | 搜尋司法院裁判書資料庫 | `search_judgments(case_word="台上", case_number="3753", year_from=114, court="最高法院")` |
+| `search_judgments` | 搜尋司法院裁判書資料庫 | `search_judgments(keyword="預售屋 遲延交屋", case_type="民事")` |
 | `get_judgment` | 依 JID 或 URL 取得單筆判決全文 | `get_judgment(jid="TPSM,114,台上,3753,20251112,1")` |
 | `query_regulation` | 查詢法規條文／範圍／全文／修法沿革 | `query_regulation(law_name="民法", article_no="184")` |
-| `get_pcode` | 將法規名稱解析為 pcode（法規代號） | `get_pcode(law_name="律師法")` → `"I0020006"` |
+| `get_pcode` | 將法規名稱解析為 pcode（法規代號） | `get_pcode(law_name="律師法")` |
 | `search_regulations` | 以關鍵字搜尋 11,700+ 部法規 | `search_regulations(keyword="勞動")` |
+
+### 憲法法庭
+
+| 工具 | 用途 | 典型呼叫 |
+|---|---|---|
+| `get_interpretation` | 大法官解釋/憲判字全文（離線快取） | `get_interpretation("釋字748", reasoning_keyword="婚姻")` |
+| `search_interpretations` | 搜尋釋字/憲判字（爭點 + 理由書全文） | `search_interpretations(keyword="集會自由")` |
+| `get_citations` | 引用關係圖譜（往前追溯） | `get_citations("釋字748", include_context=True)` |
 
 ### 工具細節
 
@@ -75,10 +94,11 @@ Tools: ['search_judgments', 'get_judgment', 'query_regulation', 'get_pcode', 'se
 
 - **精確案號查詢**（快，HTTP GET）：設定 `case_word` + `case_number` + `year_from`
 - **全文關鍵字搜尋**：設定 `keyword`
+- **裁判主文篩選**：`main_text="被告應將 移轉"` + `keyword="借名登記"` → 找被告敗訴的借名登記案
 - 可依 `court`、`case_type`（民事／刑事／行政／懲戒）、`year_from`／`year_to` 過濾
 - 結果自動依法院層級排序（最高 → 高等 → 地方）
 
-**重要**：要查某個特定案號時，**一定**要用 `case_word`+`case_number`，不要放進 `keyword`。把案號塞進 `keyword` 找不到。
+**重要**：要查某個特定案號時，**一定**要用 `case_word`+`case_number`，不要放進 `keyword`。
 
 ```python
 # ✅ 正確 — 查 114 台上 3753 最高法院
@@ -132,32 +152,80 @@ query_regulation(law_name="勞動基準法", article_no="23", include_history=Tr
 </details>
 
 <details>
-<summary><b><code>get_pcode</code></b></summary>
+<summary><b><code>get_interpretation</code></b></summary>
 
-將法規名稱轉換為 pcode（law.moj.gov.tw 內部 ID）。
+取得大法官解釋（釋字第 1–813 號）或憲法法庭裁判（憲判字）全文。預設層從本地 JSON 快取即時回傳。
+
+**分層設計**（節省 context）：
+
+| 層級 | 觸發條件 | 離線？ |
+|------|---------|-------|
+| 預設層（字號/日期/爭點/解釋文） | 永遠回傳 | ✓ |
+| 理由書片段 | `reasoning_keyword="關鍵字"` | ✓ |
+| 理由書全文（最多 15,000 字） | `include_reasoning=True` | ✓ |
+| 意見書片段 | `opinions_keyword="關鍵字"` | ✓ |
+| 意見書全文 | `include_opinions=True` | ✓ |
 
 ```python
-get_pcode(law_name="律師法")
-# → {"success": true, "law_name": "律師法", "pcode": "I0020006", "status": "現行法規"}
+# 預設層（離線，~0ms）
+get_interpretation("釋字748")
 
-get_pcode(law_name="勞基法")
-# → 模糊比對到 "勞動基準法" → {"success": true, "pcode": "N0030001", ...}
+# 理由書中搜尋關鍵字
+get_interpretation("釋字748", reasoning_keyword="婚姻自由")
+
+# 在意見書中定位特定大法官
+get_interpretation("釋字499", opinions_keyword="林子儀")
+
+# 新制憲判字
+get_interpretation("111年憲判字第1號")
 ```
 
-涵蓋 11,700+ 部法規。內建的 `pcode_all.json` 會從官方 API 每週自動更新。
+建議先用 keyword 片段模式定位，只在需要時才開全文模式。
 </details>
 
 <details>
-<summary><b><code>search_regulations</code></b></summary>
+<summary><b><code>search_interpretations</code></b></summary>
 
-對法規名稱做關鍵字搜尋。分頁（每頁 50 筆），現行法規排在廢止之前。
+搜尋大法官解釋與憲判字。關鍵字同時匹配標題、爭點、理由書全文。
 
 ```python
-search_regulations(keyword="勞動")
-search_regulations(keyword="勞動", offset=50)  # 第 2 頁
-search_regulations(keyword="消費", exclude_abolished=True)
+# 全文搜尋（搜爭點 + 理由書）
+search_interpretations(keyword="集會自由")
+
+# 篩選年度（新制）
+search_interpretations(keyword="言論自由", year=112)
+
+# 列舉最後 10 筆釋字
+search_interpretations(number_from=804, number_to=813)
 ```
 </details>
+
+<details>
+<summary><b><code>get_citations</code></b></summary>
+
+從理由書中抽取所有引用的釋字/憲判字字號。追溯方向：查詢指定裁判**引用了哪些先前裁判**。
+
+```python
+get_citations("釋字748")
+# → citations: [釋字第242號, 釋字第362號, 釋字第365號, ...]
+
+# 附上引用前後 80 字片段
+get_citations("釋字748", include_context=True)
+```
+</details>
+
+---
+
+## 範例問法
+
+```
+「查民法第 184 條」
+「搜尋跟預售屋遲延交屋有關的最高法院判決」
+「釋字 748 的理由書重點是什麼」
+「哪些大法官解釋討論過集會自由」
+「釋字 748 引用了哪些先前的釋字」
+「查 111 年憲判字第 1 號」
+```
 
 ---
 
@@ -233,7 +301,7 @@ Claude Cowork 跑在 Claude Desktop 裡面，**共用同一個 `claude_desktop_c
 2. **完全關閉並重新開啟 Claude Desktop** — 同時也會重啟 Cowork
 3. 開一個 Cowork session，`taiwan-legal-db` 的工具就可以用了
 
-**注意**：Cowork 目前在 Claude Pro / Max / Team / Enterprise 方案都可以用，且只能存取你明確授權的資料夾。MCP server 本身跑在你的 host 上（不是 Cowork VM 裡面），透過 Desktop SDK bridge 溝通，所以不管你授權哪個資料夾給 Cowork，它都存取得到內建的 `pcode_all.json` 資料檔。
+**注意**：Cowork 目前在 Claude Pro / Max / Team / Enterprise 方案都可以用，且只能存取你明確授權的資料夾。MCP server 本身跑在你的 host 上（不是 Cowork VM 裡面），透過 Desktop SDK bridge 溝通，所以不管你授權哪個資料夾給 Cowork，它都存取得到內建的資料檔。
 
 ### 其他 MCP 相容 client
 
@@ -259,22 +327,31 @@ Claude Cowork 跑在 Claude Desktop 裡面，**共用同一個 `claude_desktop_c
 ```
 
 **MCP client 回報「伺服器啟動失敗」**
-→ 直接跑 Quick Start 步驟 4 的驗證指令。若失敗，代表 import chain 壞了 — 看 traceback。若通過，問題在 MCP client 的啟動設定（路徑或 cwd 錯了）。
+→ 直接跑 Quick Start 步驟 3 的驗證指令。若失敗，代表 import chain 壞了 — 看 traceback。若通過，問題在 MCP client 的啟動設定（路徑或 cwd 錯了）。
 
 **`ssl.SSLCertVerificationError: ... Missing Subject Key Identifier`**
 → 這是 OpenSSL 3.6+ 對 TWCA Global Root CA 的廣泛 rejection，**不是 certifi 舊的問題**。本 repo 透過 [`truststore`](https://github.com/sethmlarson/truststore) 套件讓 Python 改用作業系統原生的 trust store（macOS Security framework、Windows CryptoAPI、Linux 系統 CA），**所有路徑都保留完整 SSL 驗證（`verify=True`）**，不使用 `verify=False`。這在 macOS、Windows 以及 OpenSSL <3.6 的 Linux 都能正常工作。OpenSSL 3.6+ 的 Linux 環境（Fedora 40+、未來的 Ubuntu LTS）目前可能仍有問題，歡迎 issue 回報。
 
 ---
 
-## 資料來源
+## 資料來源與統計
 
 所有資料都取自台灣政府**公開**資料庫。不會對外做其他網路呼叫：
 
-- `judgment.judicial.gov.tw` — 司法院裁判書系統
-- `data.judicial.gov.tw` — 司法院開放資料 API
-- `law.moj.gov.tw` — 法務部全國法規資料庫
+| 來源 | 網域 | 說明 |
+|------|------|------|
+| 司法院裁判書系統 | judgment.judicial.gov.tw | 裁判書搜尋與全文 |
+| 司法院憲法法庭 | cons.judicial.gov.tw | 大法官解釋與憲判字 |
+| 全國法規資料庫 | law.moj.gov.tw | 法規條文與修法沿革 |
 
 `mcp_server/config.py:ALLOWED_DOMAINS` 以硬編碼 allow-list 強制執行。伺服器會拒絕抓取任何不在這些網域的 URL。
+
+### 憲法法庭資料統計
+
+| 資料集 | 筆數 | 含理由書 | 含意見書 | 檔案大小 |
+|--------|------|---------|---------|---------|
+| 舊制釋字（old_cases.json） | 813 | 734 | 370 | 7.4 MB |
+| 新制憲判字（new_cases.json） | 55 | 55 | 55 | 1.8 MB |
 
 ## 快取
 
@@ -284,6 +361,7 @@ Claude Cowork 跑在 Claude Desktop 裡面，**共用同一個 `claude_desktop_c
 | 搜尋結果 | 24 小時 | 同上 |
 | 法規條文 | 7 天 | 同上 |
 | pcode metadata | 30 天 | 同上 |
+| 釋字/憲判字 | 本地 JSON（不過期） | `mcp_server/data/old_cases.json`、`new_cases.json` |
 
 全部清除：刪掉 `mcp_server/data/cache/legal_mcp.db`。快取檔在 `.gitignore` 內。
 
@@ -304,25 +382,31 @@ Claude Cowork 跑在 Claude Desktop 裡面，**共用同一個 `claude_desktop_c
 mcp-taiwan-legal-db/
 ├── .gitignore
 ├── .mcp.json              # 資料夾內 Claude Code session 自動註冊用
-├── LICENSE                # MIT
+├── LICENSE                # MIT（程式碼）
+├── DATA_LICENSE           # CC0 1.0（憲法法庭資料）
+├── SOURCES.md             # 資料來源說明
+├── CITATION.cff           # 學術引用格式
 ├── README.md              # 本檔（繁體中文）
 ├── README.en.md           # English version
 ├── pyproject.toml         # 套件 metadata 與相依
 └── mcp_server/
     ├── __init__.py
-    ├── server.py          # FastMCP 入口 — 定義 5 個 @mcp.tool() function
+    ├── server.py          # FastMCP 入口 — 定義 8 個 @mcp.tool() function
     ├── config.py          # URL、法院代碼、快取 TTL、allowed domains
     ├── updater.py         # 獨立的 pcode_all.json 更新 script
     ├── cache/db.py        # SQLite 快取層
     ├── data/
     │   ├── pcode_all.json          # 11,700+ 部法規（內建，~780 KB）
-    │   └── law_histories.json      # 修法沿革（內建，~9.6 MB）
+    │   ├── law_histories.json      # 修法沿革（內建，~9.6 MB）
+    │   ├── old_cases.json          # 813 筆舊制釋字全文（內建，~7.4 MB）
+    │   └── new_cases.json          # 55 筆新制憲判字全文（內建，~1.8 MB）
     ├── models/            # Judgment / Regulation dataclass
     ├── parsers/           # 判決與法規頁面的 HTML parser
     ├── tools/
     │   ├── judicial_search.py      # search_judgments
     │   ├── judicial_doc.py         # get_judgment
-    │   └── regulations.py          # query_regulation, get_pcode, search_regulations
+    │   ├── regulations.py          # query_regulation, get_pcode, search_regulations
+    │   └── constitutional_court.py # get_interpretation, search_interpretations, get_citations
     └── tests/             # pytest 測試
 ```
 
@@ -345,9 +429,14 @@ mcp-taiwan-legal-db/
 
 Best-effort 維護 — 我們會盡量跟上 upstream（司法院、法務部）頁面變動，但不保證 issue 的回覆時效。
 
-## License
+## 授權
 
-[MIT](LICENSE)
+**程式碼**：[MIT License](LICENSE)
+
+**憲法法庭資料**：[CC0 1.0](DATA_LICENSE)（公有領域貢獻）— 任何人皆可自由使用、修改及散布，無需取得授權或署名。學術引用格式請參考 [CITATION.cff](CITATION.cff)。
+
+裁判書與法規資料來源：[司法院](https://judgment.judicial.gov.tw)、[法務部](https://law.moj.gov.tw)（政府公開資料）。
+憲法法庭資料來源：[司法院憲法法庭](https://cons.judicial.gov.tw)（依中華民國著作權法第 9 條屬公有領域）。詳見 [SOURCES.md](SOURCES.md)。
 
 ## 免責聲明
 
