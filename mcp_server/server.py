@@ -10,6 +10,7 @@ from mcp_server.cache.db import CacheDB
 from mcp_server.tools.regulations import RegulationClient
 from mcp_server.tools.judicial_search import JudicialSearchClient
 from mcp_server.tools.judicial_doc import JudgmentDocClient
+from mcp_server.tools.waf_bypass import JudicialWAFBypass
 from mcp_server.tools.constitutional_court import (
     get_interpretation as _cc_get_interpretation,
     search_interpretations as _cc_search_interpretations,
@@ -32,6 +33,7 @@ cache: CacheDB | None = None
 reg_client: RegulationClient | None = None
 jud_search: JudicialSearchClient | None = None
 jud_doc: JudgmentDocClient | None = None
+waf: JudicialWAFBypass | None = None
 
 
 async def _maybe_update_pcode_all():
@@ -54,7 +56,7 @@ async def _maybe_update_pcode_all():
 @asynccontextmanager
 async def lifespan(server: FastMCP):
     """伺服器生命週期：啟動時初始化，關閉時清理"""
-    global cache, reg_client, jud_search, jud_doc
+    global cache, reg_client, jud_search, jud_doc, waf
 
     # 啟動
     cache = CacheDB()
@@ -62,9 +64,10 @@ async def lifespan(server: FastMCP):
     await cache.cleanup_expired()
     await cache.cleanup_invalid_regulation_names()
 
+    waf = JudicialWAFBypass()
     reg_client = RegulationClient(cache)
-    jud_search = JudicialSearchClient(cache)
-    jud_doc = JudgmentDocClient(cache)
+    jud_search = JudicialSearchClient(cache, waf)
+    jud_doc = JudgmentDocClient(cache, waf)
 
     logger.info("台灣法律資料庫 MCP Server 已啟動")
 

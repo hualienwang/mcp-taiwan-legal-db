@@ -22,7 +22,7 @@
 | **離線快取** | 868 筆大法官解釋與憲判字（含理由書/意見書全文）從本地 JSON 即時回傳 |
 | **引用關係圖譜** | 從理由書抽取所有引用的釋字/憲判字，追溯憲法學說演變 |
 | **全文搜尋** | 裁判書關鍵字搜尋 + 釋字爭點/理由書全文搜尋 |
-| **純 HTTP** | 不需要 Playwright / Chromium，安裝輕量 |
+| **混合請求策略** | 預設用 httpx 直打（~0.25s），觸發司法院 F5 WAF 時自動以 Playwright 刷 cookie 後繼續 |
 
 ---
 
@@ -40,7 +40,10 @@ python3 -m venv .venv
 .venv/bin/pip install --upgrade pip
 .venv/bin/pip install -e .
 
-# 3. 驗證伺服器可以啟動並註冊 8 個工具
+# 3. 安裝 Playwright Chromium（僅在司法院 WAF 觸發時使用，一般查詢不會啟動）
+.venv/bin/playwright install chromium
+
+# 4. 驗證伺服器可以啟動並註冊 8 個工具
 .venv/bin/python -c "
 import asyncio
 from mcp_server.server import mcp
@@ -331,6 +334,21 @@ Claude Cowork 跑在 Claude Desktop 裡面，**共用同一個 `claude_desktop_c
 
 **`ssl.SSLCertVerificationError: ... Missing Subject Key Identifier`**
 → 這是 OpenSSL 3.6+ 對 TWCA Global Root CA 的廣泛 rejection，**不是 certifi 舊的問題**。本 repo 透過 [`truststore`](https://github.com/sethmlarson/truststore) 套件讓 Python 改用作業系統原生的 trust store（macOS Security framework、Windows CryptoAPI、Linux 系統 CA），**所有路徑都保留完整 SSL 驗證（`verify=True`）**，不使用 `verify=False`。這在 macOS、Windows 以及 OpenSSL <3.6 的 Linux 都能正常工作。OpenSSL 3.6+ 的 Linux 環境（Fedora 40+、未來的 Ubuntu LTS）目前可能仍有問題，歡迎 issue 回報。
+
+---
+
+## WAF 處理機制
+
+司法院 `judgment.judicial.gov.tw` 部署了 F5 BIG-IP ASM WAF，純 HTTP 請求可能被擋（回固定 245 bytes 的 "Request Rejected"）。
+
+本專案採混合策略：
+
+- 預設用 httpx 直接請求（~0.25s）
+- 偵測到被擋（response 含 `Request Rejected` 或 JS challenge marker `bobcmn` / `TSPD`）自動 fallback 到 Playwright 跑一次 JS challenge
+- 取得 TSPD cookies 後持久化到 `mcp_server/data/.judicial_cookies.json`（0600 權限，已 gitignore）
+- 後續查詢繼續用 httpx 帶 cookies 執行
+
+`cons.judicial.gov.tw`（釋字）跟 `law.moj.gov.tw`（法規）沒這個問題，不經過 WAF 流程。
 
 ---
 

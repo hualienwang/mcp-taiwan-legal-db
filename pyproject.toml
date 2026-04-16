@@ -27,6 +27,7 @@ dependencies = [
     "aiosqlite>=0.20.0",
     "beautifulsoup4>=4.12.0",
     "tenacity>=8.0.0",
+    "playwright>=1.40.0",
     "lxml>=5.0.0",
     # Use OS-native trust stores (Keychain / CryptoAPI / system ca-certs)
     # instead of the certifi bundle. Required because TWCA Global Root CA

@@ -156,7 +156,11 @@ def _parse_case_id(case_id: str) -> tuple[str, int, int]:
 
     # ── 新制：含「憲判」一定是新制 ──
     if "憲判" in s:
+        # 先試「NNN年憲判...」標準寫法
         year_m = _NEW_YEAR_RE.search(s)
+        if not year_m:
+            # 再試「NNN憲判...」簡寫（例：111憲判1、111憲判字第1號）
+            year_m = re.match(r"^\s*(\d+)\s*憲判", s)
         if not year_m:
             raise ValueError(
                 f"新制憲判字必須指定年度，收到「{case_id}」缺少年度。"

@@ -20,6 +20,9 @@ mcp_server/data/cache/
 *.db-shm
 *.db-wal
 
+# F5 WAF bypass cookies (re-generated on demand)
+mcp_server/data/.judicial_cookies.json
+
 # IDE
 .vscode/
 .idea/

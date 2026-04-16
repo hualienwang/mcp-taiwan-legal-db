@@ -1,4 +1,4 @@
-"""裁判書全文取得工具（純 HTTP，不需要 Playwright）"""
+"""裁判書全文取得工具（httpx + F5 WAF cookie bypass）"""
 
 import logging
 import time
@@ -13,6 +13,7 @@ from mcp_server.config import (
 )
 from mcp_server.cache.db import CacheDB
 from mcp_server.parsers.judicial_parser import parse_judgment_page
+from mcp_server.tools.waf_bypass import JudicialWAFBypass, get_with_waf_retry
 
 logger = logging.getLogger(__name__)
 
@@ -23,14 +24,16 @@ _USER_AGENT = (
 
 
 class JudgmentDocClient:
-    """裁判書全文取得：HTTP GET data.aspx"""
+    """裁判書全文取得：HTTP GET data.aspx + F5 WAF cookie bypass"""
 
-    def __init__(self, cache: CacheDB):
+    def __init__(self, cache: CacheDB, waf: JudicialWAFBypass):
         self.cache = cache
+        self.waf = waf
         self.http = httpx.AsyncClient(
             timeout=30.0,
             headers={"User-Agent": _USER_AGENT},
             follow_redirects=True,
+            cookies=waf.get_cookies(),
         )
 
     async def close(self):
@@ -74,7 +77,7 @@ class JudgmentDocClient:
             return {"success": True, "cached": True, **cached}
 
         try:
-            resp = await self.http.get(url)
+            resp = await get_with_waf_retry(self.http, url, self.waf)
             resp.raise_for_status()
 
             soup = BeautifulSoup(resp.text, "lxml")
@@ -104,12 +107,12 @@ class JudgmentDocClient:
         }
 
     async def _fetch_via_http(self, jid: str) -> dict | None:
-        """透過 HTTP GET data.aspx 取得裁判書"""
+        """透過 HTTP GET data.aspx 取得裁判書（遇 WAF 自動刷 cookie 重試）"""
         url = f"{JUDICIAL_DATA_URL}?ty=JD&id={jid}"
 
         try:
             start = time.monotonic()
-            resp = await self.http.get(url)
+            resp = await get_with_waf_retry(self.http, url, self.waf)
             elapsed = time.monotonic() - start
             logger.info("HTTP data.aspx 回應: status=%d, elapsed=%.2fs, jid=%s",
                         resp.status_code, elapsed, jid)

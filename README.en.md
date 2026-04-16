@@ -31,22 +31,25 @@ python3 -m venv .venv
 .venv/bin/pip install --upgrade pip
 .venv/bin/pip install -e .
 
-# 3. Verify the server starts and registers all 5 tools
+# 3. Install Playwright Chromium (only invoked when the Judicial Yuan WAF triggers; idle otherwise)
+.venv/bin/playwright install chromium
+
+# 4. Verify the server starts and registers all 8 tools
 .venv/bin/python -c "
 import asyncio
 from mcp_server.server import mcp
 print('Server:', mcp.name)
 tools = asyncio.run(mcp.list_tools())
 print('Tools:', [t.name for t in tools])
-assert len(tools) == 5, f'Expected 5 tools, got {len(tools)}'
+assert len(tools) == 8, f'Expected 8 tools, got {len(tools)}'
 print('✓ Setup OK')
 "
 ```
 
-**Expected output of step 4:**
+**Expected output:**
 ```
 Server: 台灣法律資料庫
-Tools: ['search_judgments', 'get_judgment', 'query_regulation', 'get_pcode', 'search_regulations']
+Tools: ['search_judgments', 'get_judgment', 'query_regulation', 'get_pcode', 'search_regulations', 'get_interpretation', 'search_interpretations', 'get_citations']
 ✓ Setup OK
 ```
 
@@ -260,6 +263,21 @@ Any MCP client that follows the [Model Context Protocol specification](https://m
 
 **MCP client reports "server failed to start"**
 → Run the verify command from Quick Start step 4 directly. If it fails, the import chain is broken — read the traceback. If it passes, the issue is in the MCP client's launch configuration (wrong path, wrong cwd).
+
+---
+
+## WAF Handling
+
+The Judicial Yuan's `judgment.judicial.gov.tw` is behind an F5 BIG-IP ASM WAF. Plain HTTP requests may be blocked (returning a fixed 245-byte "Request Rejected" page).
+
+This project uses a hybrid strategy:
+
+- Requests go out via httpx directly by default (~0.25s)
+- When a block is detected (response contains `Request Rejected` or JS challenge markers `bobcmn` / `TSPD`), it falls back to Playwright to execute the JS challenge
+- The resulting TSPD cookies are persisted to `mcp_server/data/.judicial_cookies.json` (0600 permissions, gitignored)
+- Subsequent queries resume via httpx with the refreshed cookies
+
+`cons.judicial.gov.tw` (Constitutional Court) and `law.moj.gov.tw` (regulations) are not affected — they bypass the WAF path entirely.
 
 ---
 

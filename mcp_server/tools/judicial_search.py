@@ -1,4 +1,4 @@
-"""司法院裁判書搜尋工具（精確案號 HTTP GET + 關鍵字 HTTP POST）"""
+"""司法院裁判書搜尋工具（httpx + F5 WAF cookie bypass）"""
 
 import asyncio
 import random
@@ -18,6 +18,7 @@ from mcp_server.config import (
 )
 from mcp_server.cache.db import CacheDB
 from mcp_server.parsers.judicial_parser import parse_search_results
+from mcp_server.tools.waf_bypass import JudicialWAFBypass, get_with_waf_retry
 
 logger = logging.getLogger(__name__)
 
@@ -33,10 +34,11 @@ _USER_AGENT = (
 
 
 class JudicialSearchClient:
-    """裁判書搜尋 — 純 httpx，不需要 Playwright"""
+    """裁判書搜尋 — httpx + F5 WAF cookie bypass (Playwright 僅用於刷 cookie)"""
 
-    def __init__(self, cache: CacheDB):
+    def __init__(self, cache: CacheDB, waf: JudicialWAFBypass):
         self.cache = cache
+        self.waf = waf
         self._last_search_time: float = 0
 
     async def close(self):
@@ -178,15 +180,23 @@ class JudicialSearchClient:
                 timeout=httpx.Timeout(15.0),
                 follow_redirects=True,
                 headers={"User-Agent": _USER_AGENT},
+                cookies=self.waf.get_cookies(),
             ) as client:
-                outer_tasks = []
-                for sys_code in sys_codes:
-                    p = {**base_params, "sys": sys_code}
-                    outer_tasks.append(client.get(_QRYRESULT_URL, params=p))
-
-                outer_responses = await asyncio.gather(
-                    *outer_tasks, return_exceptions=True,
+                # 先用一個 request 偵測是否被擋
+                probe_params = {**base_params, "sys": sys_codes[0]}
+                probe = await get_with_waf_retry(
+                    client, _QRYRESULT_URL, self.waf, params=probe_params
                 )
+                # 其餘的 sys_code 並行（cookie 已新鮮）
+                outer_responses = [probe]
+                if len(sys_codes) > 1:
+                    outer_tasks = [
+                        client.get(_QRYRESULT_URL, params={**base_params, "sys": sc})
+                        for sc in sys_codes[1:]
+                    ]
+                    outer_responses += list(
+                        await asyncio.gather(*outer_tasks, return_exceptions=True)
+                    )
 
                 iframe_tasks = []
                 for resp in outer_responses:
@@ -245,9 +255,10 @@ class JudicialSearchClient:
             timeout=httpx.Timeout(30.0),
             follow_redirects=True,
             headers={"User-Agent": _USER_AGENT},
+            cookies=self.waf.get_cookies(),
         ) as client:
-            # Step 1: GET 表單頁，取 ASP.NET 狀態 token
-            r = await client.get(JUDICIAL_SEARCH_URL)
+            # Step 1: GET 表單頁，取 ASP.NET 狀態 token（遇 WAF 自動重試）
+            r = await get_with_waf_retry(client, JUDICIAL_SEARCH_URL, self.waf)
             r.raise_for_status()
             soup = BeautifulSoup(r.text, "html.parser")
 
@@ -256,7 +267,10 @@ class JudicialSearchClient:
             viewgen = soup.find("input", {"name": "__VIEWSTATEGENERATOR"})
 
             if not viewstate or not event_val:
-                raise RuntimeError("無法取得 ASP.NET 表單 token（__VIEWSTATE / __EVENTVALIDATION）")
+                raise RuntimeError(
+                    "無法取得 ASP.NET 表單 token（__VIEWSTATE / __EVENTVALIDATION）。"
+                    "可能 F5 WAF cookie warmup 失敗，請檢查 Playwright 是否已安裝。"
+                )
 
             # Step 2: 建構 POST 表單資料
             form_data: dict[str, str] = {
@@ -291,8 +305,10 @@ class JudicialSearchClient:
             if params.get("case_number"):
                 form_data["jud_no"] = str(params["case_number"])
 
-            # Step 3: POST 表單
-            r2 = await client.post(JUDICIAL_SEARCH_URL, data=form_data)
+            # Step 3: POST 表單（遇 WAF 自動重試）
+            r2 = await get_with_waf_retry(
+                client, JUDICIAL_SEARCH_URL, self.waf, method="POST", data=form_data
+            )
             r2.raise_for_status()
             soup2 = BeautifulSoup(r2.text, "html.parser")
 
@@ -312,7 +328,7 @@ class JudicialSearchClient:
             MAX_PAGES = 100
 
             while len(all_results) < max_results and page_num <= MAX_PAGES:
-                r3 = await client.get(iframe_url)
+                r3 = await get_with_waf_retry(client, iframe_url, self.waf)
                 if r3.status_code != 200:
                     logger.warning("第 %d 頁 HTTP 失敗: %d", page_num, r3.status_code)
                     break
