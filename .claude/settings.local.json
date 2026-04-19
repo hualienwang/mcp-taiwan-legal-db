@@ -1,0 +1,6 @@
+{
+  "enabledMcpjsonServers": [
+    "taiwan-legal-db"
+  ],
+  "enableAllProjectMcpServers": true
+}

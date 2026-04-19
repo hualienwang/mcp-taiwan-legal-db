@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "taiwan-legal-db": {
-      "command": ".venv/bin/python",
+      "command": ".venv/scripts/python",
       "args": ["-m", "mcp_server.server"]
     }
   }
